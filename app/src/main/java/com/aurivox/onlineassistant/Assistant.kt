@@ -84,7 +84,7 @@ object IntentParser {
         }
 
         if ("wifi" in tokens) return ParsedIntent("WIFI_PANEL")
-        if ("bluetooth" in tokens) return ParsedIntent("BT_PANEL")
+        if ("bluetooth" in tokens) return ParsedIntent("BT_SETTINGS")
         if ("airplane" in tokens) return ParsedIntent("AIRPLANE_SETTINGS")
         if (tokens.any { it in setOf("power", "battery") } && tokens.contains("saver")) return ParsedIntent("BATTERY_SAVER_SETTINGS")
         if (tokens.any { it in setOf("flashlight", "torch") }) {
@@ -92,7 +92,7 @@ object IntentParser {
             val off = tokens.any { it in wordsOff }
             return ParsedIntent(if (on) "FLASHLIGHT_ON" else if (off) "FLASHLIGHT_OFF" else "FLASHLIGHT_TOGGLE")
         }
-        if ("brightness" in tokens) return ParsedIntent("BRIGHTNESS_PANEL")
+        if ("brightness" in tokens) return ParsedIntent("DISPLAY_SETTINGS")
         if ("volume" in tokens) {
             val delta = when {
                 tokens.contains("up") || tokens.contains("increase") -> "up"
@@ -187,33 +187,39 @@ object IntentParser {
 
 object CommandExecutor {
 
-    fun execute(context: Context, intent: ParsedIntent): CommandResult {
+    // Make suspend to allow calling Utils.answerShortOnline (suspend)
+    suspend fun execute(context: Context, intent: ParsedIntent): CommandResult {
         return when (intent.action) {
+            // Smalltalk & mood
             "SMALLTALK_HOW" -> CommandResult("I’m feeling clear and focused. How’s your mood right now?")
             "USER_MOOD" -> respondToMood(intent.params["mood"] ?: "Unknown", intent.params["raw"] ?: "")
 
+            // App control
             "OPEN_APP" -> openApp(context, intent.params["app"] ?: "")
             "YOUTUBE_SEARCH" -> openYouTubeSearch(context, intent.params["query"] ?: "")
             "WHATSAPP_CHAT" -> openWhatsAppChat(context, intent.params["name"] ?: "")
 
+            // Settings (fixed actions)
             "WIFI_PANEL" -> openPanel(context, Settings.Panel.ACTION_WIFI, "Wi‑Fi panel.")
-            "BT_PANEL" -> openPanel(context, Settings.Panel.ACTION_BLUETOOTH, "Bluetooth panel.")
+            "BT_SETTINGS" -> openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth settings.")
             "AIRPLANE_SETTINGS" -> openSettings(context, Settings.ACTION_AIRPLANE_MODE_SETTINGS, "Airplane mode settings.")
             "BATTERY_SAVER_SETTINGS" -> openSettings(context, Settings.ACTION_BATTERY_SAVER_SETTINGS, "Battery saver settings.")
             "FLASHLIGHT_ON" -> setTorch(context, true)
             "FLASHLIGHT_OFF" -> setTorch(context, false)
             "FLASHLIGHT_TOGGLE" -> toggleTorch(context)
-            "BRIGHTNESS_PANEL" -> openPanel(context, Settings.Panel.ACTION_BRIGHTNESS, "Brightness.")
+            "DISPLAY_SETTINGS" -> openSettings(context, Settings.ACTION_DISPLAY_SETTINGS, "Display settings.")
             "VOLUME_SET" -> adjustVolume(context, intent.params["delta"] ?: "set")
             "NOTIFICATION_SETTINGS" -> openSettings(context, Settings.ACTION_NOTIFICATION_SETTINGS, "Notifications settings.")
             "SCREENSHOT_HINT" -> CommandResult("Use Power + Volume Down to take a screenshot.")
             "LOCK_HINT" -> openSettings(context, Settings.ACTION_SECURITY_SETTINGS, "Security settings.")
 
+            // Communication
             "CALL_CONTACT" -> callContact(context, intent.params["name"] ?: "")
             "REDIAL_HINT" -> CommandResult("Open dialer to redial.")
             "SMS_COMPOSE" -> smsCompose(context, intent.params["to"] ?: "")
             "EMAIL_COMPOSE" -> emailCompose(context)
 
+            // Productivity
             "SET_ALARM" -> setAlarm(context)
             "CANCEL_ALARM_HINT" -> CommandResult("Manage alarms in Clock app.")
             "SNOOZE_ALARM_HINT" -> CommandResult("Snooze from alarm notification.")
@@ -224,11 +230,13 @@ object CommandExecutor {
             "READ_NOTES" -> CommandResult(Notes.get(context).ifBlank { "No notes yet." })
             "DELETE_NOTES" -> { Notes.clear(context); CommandResult("Notes deleted.") }
 
+            // Status
             "TELL_TIME" -> CommandResult("It’s ${java.time.LocalTime.now().withNano(0)}.")
             "TELL_DATE" -> CommandResult("Today is ${java.time.LocalDate.now()}.")
             "BATTERY_STATUS" -> batteryStatus(context)
             "STORAGE_STATUS" -> storageStatus()
 
+            // Media
             "MEDIA_PLAY" -> CommandResult("Play.")
             "MEDIA_PAUSE" -> CommandResult("Pause.")
             "MEDIA_NEXT" -> CommandResult("Next track.")
@@ -236,6 +244,7 @@ object CommandExecutor {
             "MEDIA_MUTE" -> { adjustMute(context, true); CommandResult("Muted.") }
             "MEDIA_UNMUTE" -> { adjustMute(context, false); CommandResult("Unmuted.") }
 
+            // Utilities (online answers are suspend)
             "CALCULATE" -> calcLocal(intent.params["expr"] ?: "")
             "CONVERT" -> CommandResult(Utils.answerShortOnline("Convert: ${intent.params["raw"] ?: ""}"))
             "DEFINE" -> CommandResult(Utils.answerShortOnline("Define: ${intent.params["word"] ?: ""}"))
@@ -247,6 +256,7 @@ object CommandExecutor {
             "TECH_FACT" -> CommandResult(Utils.answerShortOnline("Give one short interesting tech fact."))
             "MOTIVATION" -> CommandResult(Utils.answerShortOnline("Give one short motivational line."))
 
+            // General queries
             "RESEARCH" -> CommandResult(Utils.answerShortOnline("Short helpful answer:\n${intent.params["query"] ?: ""}"))
             "UNKNOWN" -> CommandResult(Utils.answerShortOnline("Understand and help: ${intent.params["raw"] ?: ""}"))
 
@@ -275,7 +285,9 @@ object CommandExecutor {
         return CommandResult(spoken)
     }
     private fun openCalendar(context: Context): CommandResult {
-        val i = Intent(Intent.ACTION_VIEW).setData(Uri.parse("content://com.android.calendar/time/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val i = Intent(Intent.ACTION_VIEW)
+            .setData(Uri.parse("content://com.android.calendar/time/"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(i)
         return CommandResult("Calendar.")
     }
@@ -283,14 +295,23 @@ object CommandExecutor {
     private fun setTorch(context: Context, on: Boolean): CommandResult {
         val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val camId = cm.cameraIdList.firstOrNull()
-        return try { if (camId != null) cm.setTorchMode(camId, on); CommandResult(if (on) "Flashlight on." else "Flashlight off.") }
-        catch (_: Exception) { CommandResult("Flashlight control not available.") }
+        return try {
+            if (camId != null) cm.setTorchMode(camId, on)
+            CommandResult(if (on) "Flashlight on." else "Flashlight off.")
+        } catch (_: Exception) {
+            CommandResult("Flashlight control not available.")
+        }
     }
     private fun toggleTorch(context: Context): CommandResult {
         val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val camId = cm.cameraIdList.firstOrNull() ?: return CommandResult("Flashlight not available.")
-        return try { cm.setTorchMode(camId, true); CommandResult("Flashlight on.") }
-        catch (_: Exception) { CommandResult("Flashlight control not available.") }
+        return try {
+            // Simple toggle-on (system may not allow reading current torch state)
+            cm.setTorchMode(camId, true)
+            CommandResult("Flashlight on.")
+        } catch (_: Exception) {
+            CommandResult("Flashlight control not available.")
+        }
     }
 
     private fun adjustVolume(context: Context, delta: String): CommandResult {
@@ -304,13 +325,20 @@ object CommandExecutor {
     }
     private fun adjustMute(context: Context, mute: Boolean) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE, 0)
+        am.adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            if (mute) AudioManager.ADJUST_MUTE else AudioManager.ADJUST_UNMUTE,
+            0
+        )
     }
 
     private fun callContact(context: Context, nameOrNumber: String): CommandResult {
         val digits = nameOrNumber.filter { it.isDigit() || it == '+' }
         return if (digits.length >= 5) {
-            context.startActivity(Intent(Intent.ACTION_CALL, Uri.parse("tel:$digits")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(
+                Intent(Intent.ACTION_CALL, Uri.parse("tel:$digits"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
             CommandResult("Calling.")
         } else {
             context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -318,19 +346,22 @@ object CommandExecutor {
         }
     }
     private fun smsCompose(context: Context, to: String): CommandResult {
-        val uri = Uri.parse("smsto:${to}")
+        val uri = Uri.parse("smsto:$to")
         val i = Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(i)
         return CommandResult("Messages opened.")
     }
     private fun emailCompose(context: Context): CommandResult {
-        val intent = Intent(Intent.ACTION_SENDTO).setData(Uri.parse("mailto:")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = Intent(Intent.ACTION_SENDTO)
+            .setData(Uri.parse("mailto:"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         return CommandResult("Email opened.")
     }
 
     private fun setAlarm(context: Context): CommandResult {
-        val i = Intent(AlarmClock.ACTION_SET_ALARM).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val i = Intent(AlarmClock.ACTION_SET_ALARM)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(AlarmClock.EXTRA_MESSAGE, "Aurivox alarm")
         context.startActivity(i)
         return CommandResult("Alarm setup.")
@@ -353,8 +384,11 @@ object CommandExecutor {
         return CommandResult("App not found.")
     }
     private fun openYouTubeSearch(context: Context, q: String): CommandResult {
-        val uri = if (q.isNotBlank()) Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q))
-        else Uri.parse("https://www.youtube.com")
+        val uri = if (q.isNotBlank()) {
+            Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q))
+        } else {
+            Uri.parse("https://www.youtube.com")
+        }
         context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         return CommandResult(if (q.isNotBlank()) "Searching YouTube for $q." else "Opening YouTube.")
     }
@@ -371,7 +405,10 @@ object CommandExecutor {
     private fun findPhoneByName(context: Context, name: String): String? {
         val cr = context.contentResolver
         val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-        val proj = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
+        val proj = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
         val c = cr.query(uri, proj, null, null, null) ?: return null
         c.use {
             while (it.moveToNext()) {
@@ -397,23 +434,46 @@ object CommandExecutor {
     }
 
     private fun calcLocal(expr: String): CommandResult {
-        return try { CommandResult("Result: ${SimpleCalc.eval(expr)}") } catch (_: Exception) { CommandResult("I can't calculate that.") }
+        return try {
+            CommandResult("Result: ${SimpleCalc.eval(expr)}")
+        } catch (_: Exception) {
+            CommandResult("I can't calculate that.")
+        }
     }
     private fun spell(word: String): CommandResult {
-        return if (word.isBlank()) CommandResult("Say: spell followed by a word.") else CommandResult(word.toCharArray().joinToString(" "))
+        return if (word.isBlank()) CommandResult("Say: spell followed by a word.")
+        else CommandResult(word.toCharArray().joinToString(" "))
     }
 }
 
+// Minimal calculator
 object SimpleCalc {
     fun eval(s: String): Double = Parser(s.replace(" ", "")).parse()
     private class Parser(val s: String) {
         var i = 0
         fun parse(): Double = expr()
-        private fun expr(): Double { var v = term(); while (i < s.length) when (s[i]) { '+' -> { i++; v += term() }; '-' -> { i++; v -= term() }; else -> return v }; return v }
-        private fun term(): Double { var v = factor(); while (i < s.length) when (s[i]) { '*' -> { i++; v *= factor() }; '/' -> { i++; v /= factor() }; else -> return v }; return v }
+        private fun expr(): Double {
+            var v = term()
+            while (i < s.length) when (s[i]) {
+                '+' -> { i++; v += term() }
+                '-' -> { i++; v -= term() }
+                else -> return v
+            }
+            return v
+        }
+        private fun term(): Double {
+            var v = factor()
+            while (i < s.length) when (s[i]) {
+                '*' -> { i++; v *= factor() }
+                '/' -> { i++; v /= factor() }
+                else -> return v
+            }
+            return v
+        }
         private fun factor(): Double {
             if (i < s.length && s[i] == '(') { i++; val v = expr(); i++; return v }
-            val start = i; while (i < s.length && (s[i].isDigit() || s[i] == '.')) i++
+            val start = i
+            while (i < s.length && (s[i].isDigit() || s[i] == '.')) i++
             return s.substring(start, i).toDouble()
         }
     }
