@@ -61,7 +61,7 @@ object IntentParser {
         val t = textRaw.lowercase().trim()
         val tokens = tokenize(t)
 
-        if (t.contains("how are you")) return ParsedIntent("SMALLTALK_HOW", emptyMap())
+        if (t.contains("how are you")) return ParsedIntent("SMALLTALK_HOW")
 
         if (tokens.any { it in moodWords.keys } || t.contains("i am ") || t.contains("i'm ") || t.contains("feeling ")) {
             val moodKey = moodWords.keys.firstOrNull { t.contains(it) } ?: ""
@@ -121,7 +121,7 @@ object IntentParser {
         if (tokens.contains("alarm") && tokens.contains("cancel")) return ParsedIntent("CANCEL_ALARM_HINT")
         if (tokens.contains("alarm") && tokens.contains("snooze")) return ParsedIntent("SNOOZE_ALARM_HINT")
         if (tokens.contains("alarms") && tokens.contains("list")) return ParsedIntent("LIST_ALARMS_HINT")
-        if (tokens.contains("remind")) return ParsedIntent("SET_REMINDER", mapOf("message" to extractAfterWord(t, "remind") ?: "", "time" to extractTime(t)))
+        if (tokens.contains("remind")) return ParsedIntent("SET_REMINDER", mapOf("message" to (extractAfterWord(t, "remind") ?: ""), "time" to extractTime(t)))
         if (tokens.contains("calendar")) return ParsedIntent("OPEN_CALENDAR")
         if (tokens.firstOrNull() == "note" || tokens.contains("note")) {
             val txt = t.substringAfter("note", "").trim()
@@ -189,16 +189,13 @@ object CommandExecutor {
 
     suspend fun execute(context: Context, intent: ParsedIntent): CommandResult {
         return when (intent.action) {
-            // Smalltalk & mood
             "SMALLTALK_HOW" -> CommandResult("I’m feeling clear and focused. How’s your mood right now?")
             "USER_MOOD" -> respondToMood(intent.params["mood"] ?: "Unknown", intent.params["raw"] ?: "")
 
-            // App control
             "OPEN_APP" -> openApp(context, intent.params["app"] ?: "")
             "YOUTUBE_SEARCH" -> openYouTubeSearch(context, intent.params["query"] ?: "")
             "WHATSAPP_CHAT" -> openWhatsAppChat(context, intent.params["name"] ?: "")
 
-            // Settings (fixed actions)
             "WIFI_PANEL" -> openPanel(context, Settings.Panel.ACTION_WIFI, "Wi‑Fi panel.")
             "BT_SETTINGS" -> openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth settings.")
             "AIRPLANE_SETTINGS" -> openSettings(context, Settings.ACTION_AIRPLANE_MODE_SETTINGS, "Airplane mode settings.")
@@ -212,13 +209,11 @@ object CommandExecutor {
             "SCREENSHOT_HINT" -> CommandResult("Use Power + Volume Down to take a screenshot.")
             "LOCK_HINT" -> openSettings(context, Settings.ACTION_SECURITY_SETTINGS, "Security settings.")
 
-            // Communication
             "CALL_CONTACT" -> callContact(context, intent.params["name"] ?: "")
             "REDIAL_HINT" -> CommandResult("Open dialer to redial.")
             "SMS_COMPOSE" -> smsCompose(context, intent.params["to"] ?: "")
             "EMAIL_COMPOSE" -> emailCompose(context)
 
-            // Productivity
             "SET_ALARM" -> setAlarm(context)
             "CANCEL_ALARM_HINT" -> CommandResult("Manage alarms in Clock app.")
             "SNOOZE_ALARM_HINT" -> CommandResult("Snooze from alarm notification.")
@@ -229,13 +224,11 @@ object CommandExecutor {
             "READ_NOTES" -> CommandResult(Notes.get(context).ifBlank { "No notes yet." })
             "DELETE_NOTES" -> { Notes.clear(context); CommandResult("Notes deleted.") }
 
-            // Status
             "TELL_TIME" -> CommandResult("It’s ${java.time.LocalTime.now().withNano(0)}.")
             "TELL_DATE" -> CommandResult("Today is ${java.time.LocalDate.now()}.")
             "BATTERY_STATUS" -> batteryStatus(context)
             "STORAGE_STATUS" -> storageStatus()
 
-            // Media
             "MEDIA_PLAY" -> CommandResult("Play.")
             "MEDIA_PAUSE" -> CommandResult("Pause.")
             "MEDIA_NEXT" -> CommandResult("Next track.")
@@ -243,7 +236,6 @@ object CommandExecutor {
             "MEDIA_MUTE" -> { adjustMute(context, true); CommandResult("Muted.") }
             "MEDIA_UNMUTE" -> { adjustMute(context, false); CommandResult("Unmuted.") }
 
-            // Utilities (online answers are suspend)
             "CALCULATE" -> calcLocal(intent.params["expr"] ?: "")
             "CONVERT" -> CommandResult(Utils.answerShortOnline("Convert: ${intent.params["raw"] ?: ""}"))
             "DEFINE" -> CommandResult(Utils.answerShortOnline("Define: ${intent.params["word"] ?: ""}"))
@@ -255,7 +247,6 @@ object CommandExecutor {
             "TECH_FACT" -> CommandResult(Utils.answerShortOnline("Give one short interesting tech fact."))
             "MOTIVATION" -> CommandResult(Utils.answerShortOnline("Give one short motivational line."))
 
-            // Research and general queries
             "RESEARCH" -> CommandResult(Utils.answerShortOnline("Short helpful answer:\n${intent.params["query"] ?: ""}"))
             "UNKNOWN" -> CommandResult(Utils.answerShortOnline("Understand and help: ${intent.params["raw"] ?: ""}"))
 
@@ -269,18 +260,6 @@ object CommandExecutor {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         return CommandResult("Notification settings.")
-    }
-
-    private fun respondToMood(mood: String, raw: String): CommandResult {
-        val msg = when (mood) {
-            "Positive" -> "Love that energy. Want to capture a note or queue some music?"
-            "Neutral" -> "Okay. Would a quick focus timer or a short playlist help?"
-            "Tired" -> "Rest matters. Want me to set a reminder for later or lower brightness?"
-            "Stressed" -> "That’s tough. A brief breather might help—want a 5‑minute timer or a calming track?"
-            "Low" -> "Thanks for sharing. I’m here—want a gentle playlist, a quick note, or a simple task?"
-            else -> "Got it. Want a quick timer, a note, or music?"
-        }
-        return CommandResult(msg)
     }
 
     private fun openPanel(context: Context, action: String, spoken: String): CommandResult {
@@ -452,7 +431,6 @@ object CommandExecutor {
     }
 }
 
-// Minimal calculator
 object SimpleCalc {
     fun eval(s: String): Double = Parser(s.replace(" ", "")).parse()
     private class Parser(val s: String) {
