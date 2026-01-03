@@ -61,16 +61,13 @@ object IntentParser {
         val t = textRaw.lowercase().trim()
         val tokens = tokenize(t)
 
-        // Smalltalk
         if (t.contains("how are you")) return ParsedIntent("SMALLTALK_HOW", emptyMap())
 
-        // Mood statements
         if (tokens.any { it in moodWords.keys } || t.contains("i am ") || t.contains("i'm ") || t.contains("feeling ")) {
             val moodKey = moodWords.keys.firstOrNull { t.contains(it) } ?: ""
             return ParsedIntent("USER_MOOD", mapOf("mood" to (moodWords[moodKey] ?: "Unknown"), "raw" to t))
         }
 
-        // App control (order-free)
         appKeywords.keys.firstOrNull { it in tokens }?.let { key ->
             if (verbsOpen.any { it in tokens } || tokens.size == 1) {
                 return ParsedIntent("OPEN_APP", mapOf("app" to appKeywords[key]!!))
@@ -81,13 +78,11 @@ object IntentParser {
             }
         }
 
-        // WhatsApp chat
         if ("whatsapp" in tokens && (tokens.contains("chat") || tokens.contains("message"))) {
             val name = extractName(t, listOf("chat", "message", "on whatsapp", "whatsapp")) ?: ""
             return ParsedIntent("WHATSAPP_CHAT", mapOf("name" to name))
         }
 
-        // Panels & settings
         if ("wifi" in tokens) return ParsedIntent("WIFI_PANEL")
         if ("bluetooth" in tokens) return ParsedIntent("BT_SETTINGS")
         if ("airplane" in tokens) return ParsedIntent("AIRPLANE_SETTINGS")
@@ -110,7 +105,6 @@ object IntentParser {
         if (tokens.contains("screenshot")) return ParsedIntent("SCREENSHOT_HINT")
         if (tokens.any { it in setOf("lock", "lockscreen") }) return ParsedIntent("LOCK_HINT")
 
-        // Communication
         verbsCall.firstOrNull { it in tokens }?.let {
             val name = extractAfterWord(t, it) ?: t
             return ParsedIntent("CALL_CONTACT", mapOf("name" to name.trim()))
@@ -123,7 +117,6 @@ object IntentParser {
         if (tokens.contains("redial")) return ParsedIntent("REDIAL_HINT")
         if (tokens.contains("read") && tokens.contains("messages")) return ParsedIntent("READ_MESSAGES_HINT")
 
-        // Productivity/time
         if (tokens.contains("alarm") && tokens.contains("set")) return ParsedIntent("SET_ALARM", mapOf("time" to extractTime(t)))
         if (tokens.contains("alarm") && tokens.contains("cancel")) return ParsedIntent("CANCEL_ALARM_HINT")
         if (tokens.contains("alarm") && tokens.contains("snooze")) return ParsedIntent("SNOOZE_ALARM_HINT")
@@ -137,13 +130,11 @@ object IntentParser {
         if (tokens.contains("read") && tokens.contains("notes")) return ParsedIntent("READ_NOTES")
         if (tokens.contains("delete") && tokens.contains("notes")) return ParsedIntent("DELETE_NOTES")
 
-        // Status
         if (tokens.contains("time")) return ParsedIntent("TELL_TIME")
         if (tokens.contains("date")) return ParsedIntent("TELL_DATE")
         if (tokens.contains("battery")) return ParsedIntent("BATTERY_STATUS")
         if (tokens.contains("storage")) return ParsedIntent("STORAGE_STATUS")
 
-        // Media
         if (tokens.contains("play")) return ParsedIntent("MEDIA_PLAY")
         if (tokens.contains("pause") || tokens.contains("stop")) return ParsedIntent("MEDIA_PAUSE")
         if (tokens.contains("next") || tokens.contains("skip")) return ParsedIntent("MEDIA_NEXT")
@@ -151,7 +142,6 @@ object IntentParser {
         if (tokens.contains("mute")) return ParsedIntent("MEDIA_MUTE")
         if (tokens.contains("unmute")) return ParsedIntent("MEDIA_UNMUTE")
 
-        // Utilities
         if (t.startsWith("calculate ") || t.startsWith("calc ")) return ParsedIntent("CALCULATE", mapOf("expr" to t.substringAfter(" ").trim()))
         if (tokens.contains("convert")) return ParsedIntent("CONVERT", mapOf("raw" to t))
         if (tokens.contains("define")) return ParsedIntent("DEFINE", mapOf("word" to t.substringAfter("define ").trim()))
@@ -163,7 +153,6 @@ object IntentParser {
         if (tokens.contains("tech") && tokens.contains("fact")) return ParsedIntent("TECH_FACT")
         if (tokens.contains("motivation") || tokens.contains("motivational")) return ParsedIntent("MOTIVATION")
 
-        // Research/general
         if (tokens.any { it in setOf("research", "explain", "compare", "summarize", "search") }) {
             val q = t.substringAfter(tokens.find { it in setOf("research","explain","compare","summarize","search") } ?: "").trim()
             return ParsedIntent("RESEARCH", mapOf("query" to q))
@@ -201,16 +190,13 @@ object CommandExecutor {
     // suspend to allow calling Utils.answerShortOnline (suspend)
     suspend fun execute(context: Context, intent: ParsedIntent): CommandResult {
         return when (intent.action) {
-            // Smalltalk & mood
             "SMALLTALK_HOW" -> CommandResult("I’m feeling clear and focused. How’s your mood right now?")
             "USER_MOOD" -> respondToMood(intent.params["mood"] ?: "Unknown", intent.params["raw"] ?: "")
 
-            // App control
             "OPEN_APP" -> openApp(context, intent.params["app"] ?: "")
             "YOUTUBE_SEARCH" -> openYouTubeSearch(context, intent.params["query"] ?: "")
             "WHATSAPP_CHAT" -> openWhatsAppChat(context, intent.params["name"] ?: "")
 
-            // Settings and panels
             "WIFI_PANEL" -> openPanel(context, Settings.Panel.ACTION_WIFI, "Wi‑Fi panel.")
             "BT_SETTINGS" -> openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth settings.")
             "AIRPLANE_SETTINGS" -> openSettings(context, Settings.ACTION_AIRPLANE_MODE_SETTINGS, "Airplane mode settings.")
@@ -220,17 +206,15 @@ object CommandExecutor {
             "FLASHLIGHT_TOGGLE" -> toggleTorch(context)
             "DISPLAY_SETTINGS" -> openSettings(context, Settings.ACTION_DISPLAY_SETTINGS, "Display settings.")
             "VOLUME_SET" -> adjustVolume(context, intent.params["delta"] ?: "set")
-            "NOTIFICATION_SETTINGS" -> openAppNotificationSettings(context) // fixed: no ACTION_NOTIFICATION_SETTINGS
+            "NOTIFICATION_SETTINGS" -> openAppNotificationSettings(context) // fixed
             "SCREENSHOT_HINT" -> CommandResult("Use Power + Volume Down to take a screenshot.")
             "LOCK_HINT" -> openSettings(context, Settings.ACTION_SECURITY_SETTINGS, "Security settings.")
 
-            // Communication
             "CALL_CONTACT" -> callContact(context, intent.params["name"] ?: "")
             "REDIAL_HINT" -> CommandResult("Open dialer to redial.")
             "SMS_COMPOSE" -> smsCompose(context, intent.params["to"] ?: "")
             "EMAIL_COMPOSE" -> emailCompose(context)
 
-            // Productivity
             "SET_ALARM" -> setAlarm(context)
             "CANCEL_ALARM_HINT" -> CommandResult("Manage alarms in Clock app.")
             "SNOOZE_ALARM_HINT" -> CommandResult("Snooze from alarm notification.")
@@ -241,13 +225,11 @@ object CommandExecutor {
             "READ_NOTES" -> CommandResult(Notes.get(context).ifBlank { "No notes yet." })
             "DELETE_NOTES" -> { Notes.clear(context); CommandResult("Notes deleted.") }
 
-            // Status
             "TELL_TIME" -> CommandResult("It’s ${java.time.LocalTime.now().withNano(0)}.")
             "TELL_DATE" -> CommandResult("Today is ${java.time.LocalDate.now()}.")
             "BATTERY_STATUS" -> batteryStatus(context)
             "STORAGE_STATUS" -> storageStatus()
 
-            // Media
             "MEDIA_PLAY" -> CommandResult("Play.")
             "MEDIA_PAUSE" -> CommandResult("Pause.")
             "MEDIA_NEXT" -> CommandResult("Next track.")
@@ -255,7 +237,6 @@ object CommandExecutor {
             "MEDIA_MUTE" -> { adjustMute(context, true); CommandResult("Muted.") }
             "MEDIA_UNMUTE" -> { adjustMute(context, false); CommandResult("Unmuted.") }
 
-            // Utilities (online answers are suspend)
             "CALCULATE" -> calcLocal(intent.params["expr"] ?: "")
             "CONVERT" -> CommandResult(Utils.answerShortOnline("Convert: ${intent.params["raw"] ?: ""}"))
             "DEFINE" -> CommandResult(Utils.answerShortOnline("Define: ${intent.params["word"] ?: ""}"))
@@ -267,7 +248,6 @@ object CommandExecutor {
             "TECH_FACT" -> CommandResult(Utils.answerShortOnline("Give one short interesting tech fact."))
             "MOTIVATION" -> CommandResult(Utils.answerShortOnline("Give one short motivational line."))
 
-            // General queries
             "RESEARCH" -> CommandResult(Utils.answerShortOnline("Short helpful answer:\n${intent.params["query"] ?: ""}"))
             "UNKNOWN" -> CommandResult(Utils.answerShortOnline("Understand and help: ${intent.params["raw"] ?: ""}"))
 
@@ -276,10 +256,10 @@ object CommandExecutor {
     }
 
     private fun openAppNotificationSettings(context: Context): CommandResult {
-        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        val i = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        context.startActivity(i)
         return CommandResult("Notification settings.")
     }
 
@@ -433,8 +413,9 @@ object CommandExecutor {
     }
     private fun storageStatus(): CommandResult {
         val stat = StatFs(Environment.getDataDirectory().path)
-        val avail = stat.availableBytes / (1024.0 * 1024 * 1024)
-        val total = stat.totalBytes / (1024.0 * 1024 * 1024)
+        val gb = 1024.0 * 1024 * 1024
+        val avail = stat.availableBytes / gb
+        val total = stat.totalBytes / gb
         val txt = "Storage: ${avail.roundToInt()} GB free of ${total.roundToInt()} GB."
         return CommandResult(txt)
     }
@@ -464,7 +445,6 @@ object CommandExecutor {
     }
 }
 
-// Minimal calculator
 object SimpleCalc {
     fun eval(s: String): Double = Parser(s.replace(" ", "")).parse()
     private class Parser(val s: String) {
