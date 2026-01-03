@@ -187,7 +187,6 @@ object IntentParser {
 
 object CommandExecutor {
 
-    // Make suspend to allow calling Utils.answerShortOnline (suspend)
     suspend fun execute(context: Context, intent: ParsedIntent): CommandResult {
         return when (intent.action) {
             // Smalltalk & mood
@@ -209,7 +208,7 @@ object CommandExecutor {
             "FLASHLIGHT_TOGGLE" -> toggleTorch(context)
             "DISPLAY_SETTINGS" -> openSettings(context, Settings.ACTION_DISPLAY_SETTINGS, "Display settings.")
             "VOLUME_SET" -> adjustVolume(context, intent.params["delta"] ?: "set")
-            "NOTIFICATION_SETTINGS" -> openSettings(context, Settings.ACTION_NOTIFICATION_SETTINGS, "Notifications settings.")
+            "NOTIFICATION_SETTINGS" -> openAppNotificationSettings(context)
             "SCREENSHOT_HINT" -> CommandResult("Use Power + Volume Down to take a screenshot.")
             "LOCK_HINT" -> openSettings(context, Settings.ACTION_SECURITY_SETTINGS, "Security settings.")
 
@@ -256,12 +255,20 @@ object CommandExecutor {
             "TECH_FACT" -> CommandResult(Utils.answerShortOnline("Give one short interesting tech fact."))
             "MOTIVATION" -> CommandResult(Utils.answerShortOnline("Give one short motivational line."))
 
-            // General queries
+            // Research and general queries
             "RESEARCH" -> CommandResult(Utils.answerShortOnline("Short helpful answer:\n${intent.params["query"] ?: ""}"))
             "UNKNOWN" -> CommandResult(Utils.answerShortOnline("Understand and help: ${intent.params["raw"] ?: ""}"))
 
             else -> CommandResult("Done.")
         }
+    }
+
+    private fun openAppNotificationSettings(context: Context): CommandResult {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        return CommandResult("Notification settings.")
     }
 
     private fun respondToMood(mood: String, raw: String): CommandResult {
@@ -306,7 +313,6 @@ object CommandExecutor {
         val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val camId = cm.cameraIdList.firstOrNull() ?: return CommandResult("Flashlight not available.")
         return try {
-            // Simple toggle-on (system may not allow reading current torch state)
             cm.setTorchMode(camId, true)
             CommandResult("Flashlight on.")
         } catch (_: Exception) {
