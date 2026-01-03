@@ -17,7 +17,11 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Compose disabled; UI uses XML. Remove Compose theme files to avoid errors.
+        // compose = true
     }
+    // If you later enable Compose:
+    // composeOptions { kotlinCompilerExtensionVersion = "1.5.3" }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
