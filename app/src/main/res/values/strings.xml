@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Aurivox</string>
+
+    <string-array name="quotes">
+        <item>Fast. Private. Yours.</item>
+        <item>Speak simply. Do precisely.</item>
+        <item>Short commands, big actions.</item>
+        <item>No lag. Just results.</item>
+        <item>Minimal app, maximal intent.</item>
+        <item>Control flows to the voice that owns it.</item>
+    </string-array>
+</resources>

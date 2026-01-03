@@ -1,0 +1,67 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:orientation="vertical"
+    android:background="#07080D"
+    android:padding="18dp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/headerQuotes"
+        android:text="Fast. Private. Yours."
+        android:textColor="#AEEAFF"
+        android:textSize="14sp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingTop="16dp">
+
+        <ImageView
+            android:id="@+id/orbImage"
+            android:src="@drawable/ai_orb"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
+            android:layout_gravity="center"/>
+
+        <TextView
+            android:id="@+id/voiceStatus"
+            android:text="Listening…"
+            android:textColor="#88FFFFFF"
+            android:layout_gravity="center_horizontal|bottom"
+            android:layout_marginBottom="8dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"/>
+    </FrameLayout>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <EditText
+            android:id="@+id/inputBar"
+            android:hint="Say or type… (e.g., whatsapp open, bluetooth on, how are you aurivox)"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#66FFFFFF"
+            android:background="@android:color/transparent"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"/>
+        <Button
+            android:id="@+id/btnSend"
+            android:text="Send"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/modeBanner"
+        android:text="Online‑only mode"
+        android:textColor="#7FFFD4"
+        android:layout_marginTop="6dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"/>
+</LinearLayout>
